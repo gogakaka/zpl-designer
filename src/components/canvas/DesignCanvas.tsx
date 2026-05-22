@@ -1,7 +1,9 @@
 import Konva from 'konva';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Group, Layer, Line, Rect, Stage, Transformer } from 'react-konva';
+import { Group, Image as KImage, Layer, Line, Rect, Stage, Transformer } from 'react-konva';
+import { useLoadedImage } from '../../hooks/useImage';
 import { useStore } from '../../state/store';
+import { dotToMm } from '../../units';
 import { ElementNode } from './ElementNode';
 import { Rulers } from './Rulers';
 
@@ -24,14 +26,21 @@ export function DesignCanvas({ onContextMenu }: Props) {
   const ui = useStore((s) => s.ui);
   const selectedIds = useStore((s) => s.selectedIds);
   const fitNonce = useStore((s) => s.fitNonce);
+  const snapGuides = useStore((s) => s.snapGuides);
+  const editingTextId = useStore((s) => s.editingTextId);
   const setUi = useStore((s) => s.setUi);
   const setSelection = useStore((s) => s.setSelection);
   const clearSelection = useStore((s) => s.clearSelection);
   const addElement = useStore((s) => s.addElement);
+  const moveGuide = useStore((s) => s.moveGuide);
+  const removeGuide = useStore((s) => s.removeGuide);
 
   const label = project.label;
   const elements = label.elements;
+  const guides = label.guides ?? [];
   const zoom = ui.zoom;
+  const labelWpx = label.widthMm * zoom;
+  const labelHpx = label.heightMm * zoom;
 
   const hostRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -40,14 +49,13 @@ export function DesignCanvas({ onContextMenu }: Props) {
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [pan, setPan] = useState({ x: 60, y: 40 });
   const [marquee, setMarquee] = useState<Marquee | null>(null);
-  const panning = useRef<{ active: boolean; startX: number; startY: number; panX: number; panY: number }>(
-    { active: false, startX: 0, startY: 0, panX: 0, panY: 0 },
-  );
+  const panning = useRef({ active: false, startX: 0, startY: 0, panX: 0, panY: 0 });
   const marqueeStart = useRef<{ x: number; y: number } | null>(null);
   const spaceDown = useRef(false);
   const didInit = useRef(false);
 
-  // container sizing
+  const bgImage = useLoadedImage(label.backgroundImage?.dataUrl);
+
   useLayoutEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -59,7 +67,6 @@ export function DesignCanvas({ onContextMenu }: Props) {
     return () => ro.disconnect();
   }, []);
 
-  // space-to-pan
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.code === 'Space' && !isTyping(e)) spaceDown.current = true;
@@ -100,7 +107,6 @@ export function DesignCanvas({ onContextMenu }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [size]);
 
-  // transformer
   useEffect(() => {
     const tr = trRef.current;
     const stage = stageRef.current;
@@ -139,14 +145,12 @@ export function DesignCanvas({ onContextMenu }: Props) {
   const onStageMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const stage = stageRef.current;
     if (!stage) return;
-    const targetName = e.target.name();
-    const isEmpty = e.target === stage || targetName === 'label-bg' || targetName === 'grid';
+    const name = e.target.name();
+    const isEmpty = e.target === stage || name === 'label-bg' || name === 'grid' || name === 'bg-image';
 
     if (spaceDown.current || e.evt.button === 1) {
       const p = stage.getPointerPosition();
-      if (p) {
-        panning.current = { active: true, startX: p.x, startY: p.y, panX: pan.x, panY: pan.y };
-      }
+      if (p) panning.current = { active: true, startX: p.x, startY: p.y, panX: pan.x, panY: pan.y };
       return;
     }
     if (!isEmpty) return;
@@ -208,16 +212,14 @@ export function DesignCanvas({ onContextMenu }: Props) {
   const gridLines: React.ReactNode[] = [];
   if (ui.showGrid && ui.gridMm * zoom >= 5) {
     const step = ui.gridMm * zoom;
-    const lw = label.widthMm * zoom;
-    const lh = label.heightMm * zoom;
-    for (let x = 0; x <= lw + 0.1; x += step) {
+    for (let x = 0; x <= labelWpx + 0.1; x += step) {
       gridLines.push(
-        <Line key={`gx${x}`} name="grid" points={[x, 0, x, lh]} stroke="#cbd5e1" strokeWidth={1} listening={false} />,
+        <Line key={`gx${x}`} name="grid" points={[x, 0, x, labelHpx]} stroke="#cbd5e1" strokeWidth={1} listening={false} />,
       );
     }
-    for (let y = 0; y <= lh + 0.1; y += step) {
+    for (let y = 0; y <= labelHpx + 0.1; y += step) {
       gridLines.push(
-        <Line key={`gy${y}`} name="grid" points={[0, y, lw, y]} stroke="#cbd5e1" strokeWidth={1} listening={false} />,
+        <Line key={`gy${y}`} name="grid" points={[0, y, labelWpx, y]} stroke="#cbd5e1" strokeWidth={1} listening={false} />,
       );
     }
   }
@@ -229,6 +231,10 @@ export function DesignCanvas({ onContextMenu }: Props) {
       : ui.activeTool !== 'select'
         ? 'crosshair'
         : 'default';
+
+  const editingEl = editingTextId
+    ? elements.find((e) => e.id === editingTextId && e.type === 'text')
+    : null;
 
   return (
     <div
@@ -253,16 +259,75 @@ export function DesignCanvas({ onContextMenu }: Props) {
           <Group x={pan.x} y={pan.y}>
             <Rect
               name="label-bg"
-              width={label.widthMm * zoom}
-              height={label.heightMm * zoom}
+              width={labelWpx}
+              height={labelHpx}
               fill="#ffffff"
               shadowBlur={12}
               shadowColor="#0f172a"
               shadowOpacity={0.25}
             />
+            {label.backgroundImage?.visible && bgImage && (
+              <KImage
+                name="bg-image"
+                image={bgImage}
+                width={labelWpx}
+                height={labelHpx}
+                opacity={label.backgroundImage.opacity}
+                listening={false}
+              />
+            )}
             {gridLines}
             {elements.map((el) => (
               <ElementNode key={el.id} element={el} />
+            ))}
+            {guides.map((g) => (
+              <Line
+                key={g.id}
+                points={
+                  g.axis === 'x' ? [0, 0, 0, labelHpx] : [0, 0, labelWpx, 0]
+                }
+                x={g.axis === 'x' ? g.posMm * zoom : 0}
+                y={g.axis === 'y' ? g.posMm * zoom : 0}
+                stroke="#06b6d4"
+                strokeWidth={1}
+                dash={[5, 4]}
+                hitStrokeWidth={9}
+                draggable
+                dragBoundFunc={(p) => ({
+                  x: g.axis === 'x' ? p.x : pan.x,
+                  y: g.axis === 'y' ? p.y : pan.y,
+                })}
+                onDragMove={(e) =>
+                  moveGuide(g.id, (g.axis === 'x' ? e.target.x() : e.target.y()) / zoom)
+                }
+                onDblClick={() => removeGuide(g.id)}
+                onMouseEnter={() => {
+                  const c = stageRef.current?.container();
+                  if (c) c.style.cursor = g.axis === 'x' ? 'ew-resize' : 'ns-resize';
+                }}
+                onMouseLeave={() => {
+                  const c = stageRef.current?.container();
+                  if (c) c.style.cursor = 'default';
+                }}
+              />
+            ))}
+            {snapGuides.x.map((gx, i) => (
+              <Line
+                key={`sx${i}`}
+                points={[gx * zoom, -20, gx * zoom, labelHpx + 20]}
+                stroke="#ec4899"
+                strokeWidth={1}
+                listening={false}
+              />
+            ))}
+            {snapGuides.y.map((gy, i) => (
+              <Line
+                key={`sy${i}`}
+                points={[-20, gy * zoom, labelWpx + 20, gy * zoom]}
+                stroke="#ec4899"
+                strokeWidth={1}
+                listening={false}
+              />
             ))}
             {marquee && (
               <Rect
@@ -289,6 +354,7 @@ export function DesignCanvas({ onContextMenu }: Props) {
           </Group>
         </Layer>
       </Stage>
+
       {ui.showRulers && (
         <Rulers
           width={size.w}
@@ -300,7 +366,82 @@ export function DesignCanvas({ onContextMenu }: Props) {
           dpi={project.printerProfile.dpi}
         />
       )}
+
+      {editingEl && editingEl.type === 'text' && (
+        <TextEditOverlay
+          key={editingEl.id}
+          left={pan.x + editingEl.xMm * zoom}
+          top={pan.y + editingEl.yMm * zoom}
+          width={editingEl.widthMm * zoom}
+          height={editingEl.heightMm * zoom}
+          fontSize={dotToMm(editingEl.fontHeightDot, project.printerProfile.dpi) * zoom}
+          value={editingEl.content}
+          id={editingEl.id}
+        />
+      )}
     </div>
+  );
+}
+
+function TextEditOverlay({
+  left,
+  top,
+  width,
+  height,
+  fontSize,
+  value,
+  id,
+}: {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  fontSize: number;
+  value: string;
+  id: string;
+}) {
+  const updateElement = useStore((s) => s.updateElement);
+  const setEditingTextId = useStore((s) => s.setEditingTextId);
+  const pushHistory = useStore((s) => s.pushHistory);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    pushHistory('textedit');
+    ref.current?.focus();
+    ref.current?.select();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <textarea
+      ref={ref}
+      defaultValue={value}
+      onChange={(e) => updateElement(id, { content: e.target.value }, { history: false })}
+      onBlur={() => setEditingTextId(null)}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' || (e.key === 'Enter' && !e.shiftKey)) {
+          e.preventDefault();
+          setEditingTextId(null);
+        }
+      }}
+      style={{
+        position: 'absolute',
+        left,
+        top,
+        width: Math.max(60, width),
+        height: Math.max(24, height),
+        fontSize: Math.max(8, fontSize),
+        lineHeight: 1.15,
+        padding: 0,
+        border: '2px solid var(--accent)',
+        borderRadius: 2,
+        resize: 'none',
+        zIndex: 10,
+        background: '#fff',
+        color: '#111',
+        fontFamily: "'Pretendard', 'Malgun Gothic', sans-serif",
+      }}
+    />
   );
 }
 

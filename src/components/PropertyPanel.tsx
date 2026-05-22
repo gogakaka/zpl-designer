@@ -15,6 +15,8 @@ import type {
   LineElement,
   Rotation,
   ShapeColor,
+  SymbolChar,
+  SymbolElement,
   TableElement,
   TextAlign,
   TextElement,
@@ -208,6 +210,7 @@ function SinglePanel({ element }: { element: DesignElement }) {
       {el.type === 'diagonal' && <DiagonalProps el={el} upd={upd} />}
       {el.type === 'image' && <ImageProps el={el} upd={upd} />}
       {el.type === 'table' && <TableProps el={el} upd={upd} />}
+      {el.type === 'symbol' && <SymbolProps el={el} upd={upd} />}
 
       <div className="section">
         <div className="section-title">정렬 순서 & 상태</div>
@@ -268,7 +271,70 @@ function TextProps({ el, upd }: { el: TextElement; upd: Upd }) {
         </div>
       )}
       <CheckRow label="반전 출력 (^FR)" value={el.reverse} onChange={(v) => upd({ reverse: v })} />
+      <DynamicFields el={el} upd={upd} />
     </div>
+  );
+}
+
+function DynamicFields({ el, upd }: { el: TextElement; upd: Upd }) {
+  const dyn = el.dynamic;
+  return (
+    <>
+      <Row label="동적 필드">
+        <SelectInput
+          value={dyn?.kind ?? 'none'}
+          options={[
+            { value: 'none', label: '없음 (정적 텍스트)' },
+            { value: 'counter', label: '카운터 (^SN)' },
+            { value: 'datetime', label: '날짜/시간' },
+          ]}
+          onChange={(v) => {
+            if (v === 'none') upd({ dynamic: undefined });
+            else if (v === 'counter')
+              upd({ dynamic: { kind: 'counter', start: 1, step: 1, padZeros: true } });
+            else upd({ dynamic: { kind: 'datetime', format: 'YYYY-MM-DD' } });
+          }}
+        />
+      </Row>
+      {dyn?.kind === 'counter' && (
+        <>
+          <div className="row-2">
+            <LabeledNum
+              label="시작값"
+              value={dyn.start}
+              onChange={(v) =>
+                upd({ dynamic: { kind: 'counter', start: Math.round(v), step: dyn.step, padZeros: dyn.padZeros } })
+              }
+            />
+            <LabeledNum
+              label="증가폭"
+              value={dyn.step}
+              onChange={(v) =>
+                upd({ dynamic: { kind: 'counter', start: dyn.start, step: Math.round(v), padZeros: dyn.padZeros } })
+              }
+            />
+          </div>
+          <CheckRow
+            label="앞자리 0 채움"
+            value={dyn.padZeros}
+            onChange={(v) =>
+              upd({ dynamic: { kind: 'counter', start: dyn.start, step: dyn.step, padZeros: v } })
+            }
+          />
+        </>
+      )}
+      {dyn?.kind === 'datetime' && (
+        <Row label="형식">
+          <TextInput
+            value={dyn.format}
+            onChange={(v) => upd({ dynamic: { kind: 'datetime', format: v } })}
+          />
+        </Row>
+      )}
+      {dyn?.kind === 'datetime' && (
+        <div className="hint">토큰: YYYY MM DD HH mm ss — 내보낼 때 현재 시각으로 치환됩니다.</div>
+      )}
+    </>
   );
 }
 
@@ -291,6 +357,14 @@ function Barcode1DProps({ el, upd }: { el: Barcode1DElement; upd: Upd }) {
       <CheckRow label="HRT 표시" value={el.showHrt} onChange={(v) => upd({ showHrt: v })} />
       <CheckRow label="HRT 위쪽" value={el.hrtAbove} onChange={(v) => upd({ hrtAbove: v })} />
       <CheckRow label="체크디지트" value={el.checkDigit} onChange={(v) => upd({ checkDigit: v })} />
+      {el.symbology === 'CODE128' && (
+        <CheckRow label="GS1-128 (FNC1)" value={el.gs1} onChange={(v) => upd({ gs1: v })} />
+      )}
+      {el.symbology === 'CODE128' && el.gs1 && (
+        <div className="hint">
+          데이터를 <code>(01)08801234567890(10)BATCH</code>처럼 응용 식별자(AI) 형식으로 입력하세요.
+        </div>
+      )}
       {err && <div className="issue error">{err}</div>}
     </div>
   );
@@ -432,6 +506,11 @@ function ImageProps({ el, upd }: { el: ImageElement; upd: Upd }) {
         />
       </Row>
       <CheckRow label="흑백 반전" value={el.invert} onChange={(v) => upd({ invert: v })} />
+      <CheckRow
+        label="프린터 메모리 저장 (~DG/^XG)"
+        value={el.useMemory}
+        onChange={(v) => upd({ useMemory: v })}
+      />
       {el.mono && (
         <div className="hint">
           {el.mono.widthDot} × {el.mono.heightDot} dot · {Math.round((el.mono.rowBytes * el.mono.heightDot) / 1024)} KB
@@ -505,6 +584,28 @@ function TableProps({ el, upd }: { el: TableElement; upd: Upd }) {
   );
 }
 
+function SymbolProps({ el, upd }: { el: SymbolElement; upd: Upd }) {
+  return (
+    <div className="section">
+      <div className="section-title">심볼</div>
+      <Row label="기호">
+        <SelectInput<SymbolChar>
+          value={el.symbolChar}
+          options={[
+            { value: 'A', label: '® 등록상표' },
+            { value: 'B', label: '© 저작권' },
+            { value: 'C', label: '™ 상표' },
+            { value: 'D', label: 'UL 마크' },
+            { value: 'E', label: 'CSA 마크' },
+          ]}
+          onChange={(v) => upd({ symbolChar: v })}
+        />
+      </Row>
+      <div className="hint">ZPL <code>^GS</code> 명령으로 출력됩니다.</div>
+    </div>
+  );
+}
+
 function typeLabel(type: DesignElement['type']): string {
   const map: Record<DesignElement['type'], string> = {
     text: '텍스트',
@@ -517,6 +618,7 @@ function typeLabel(type: DesignElement['type']): string {
     diagonal: '대각선',
     image: '이미지',
     table: '테이블',
+    symbol: '심볼',
   };
   return map[type];
 }

@@ -45,10 +45,11 @@ function renderRaw(key: string, opts: Record<string, unknown>): BarcodeRenderRes
 }
 
 export function render1d(el: Barcode1DElement): BarcodeRenderResult {
-  const key = `1d|${el.symbology}|${el.data}|${el.showHrt}`;
+  const gs1 = el.gs1 && el.symbology === 'CODE128';
+  const key = `1d|${el.symbology}|${gs1}|${el.data}|${el.showHrt}`;
   return renderRaw(key, {
-    bcid: BCID_1D[el.symbology],
-    text: el.data || '0',
+    bcid: gs1 ? 'gs1-128' : BCID_1D[el.symbology],
+    text: el.data || (gs1 ? '(01)00000000000000' : '0'),
     scale: 2,
     height: 14,
     includetext: el.showHrt,

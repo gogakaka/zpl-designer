@@ -12,6 +12,7 @@ const TOOLS: { type: ElementType; glyph: string; label: string }[] = [
   { type: 'diagonal', glyph: '╱', label: '대각선' },
   { type: 'image', glyph: '▦', label: '이미지' },
   { type: 'table', glyph: '田', label: '테이블' },
+  { type: 'symbol', glyph: '®', label: '심볼' },
 ];
 
 export function ToolPalette() {

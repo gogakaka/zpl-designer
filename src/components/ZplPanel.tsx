@@ -1,5 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { getGenerator, generators } from '../codegen';
+import { generators, getGenerator } from '../codegen';
+import { createProject } from '../factory';
+import { parseZpl } from '../parser/zplParser';
 import { sampleValues } from '../preview';
 import { useStore } from '../state/store';
 import { copyToClipboard, downloadText } from '../utils/download';
@@ -29,11 +31,15 @@ export function ZplPanel({ onToast }: { onToast: (msg: string) => void }) {
   const project = useStore((s) => s.project);
   const generatorId = useStore((s) => s.ui.generatorId);
   const setUi = useStore((s) => s.setUi);
+  const replaceProject = useStore((s) => s.replaceProject);
+  const requestFit = useStore((s) => s.requestFit);
 
   const [includeComments, setIncludeComments] = useState(true);
   const [encoding, setEncoding] = useState(true);
   const [resolveVars, setResolveVars] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
 
   const generator = getGenerator(generatorId);
   const code = useMemo(
@@ -49,6 +55,24 @@ export function ZplPanel({ onToast }: { onToast: (msg: string) => void }) {
 
   const bytes = new Blob([code]).size;
   const lines = code.split('\n').length;
+
+  const applyEdit = () => {
+    const result = parseZpl(draft, project.printerProfile.dpi);
+    if (result.elements.length === 0) {
+      onToast('해석 가능한 요소가 없습니다.');
+      return;
+    }
+    const p = createProject(project.name);
+    p.printerProfile = { ...project.printerProfile };
+    p.variables = project.variables.map((v) => ({ ...v }));
+    if (result.widthMm && result.widthMm > 1) p.label.widthMm = result.widthMm;
+    if (result.heightMm && result.heightMm > 1) p.label.heightMm = result.heightMm;
+    p.label.elements = result.elements;
+    replaceProject(p);
+    requestFit();
+    setEditing(false);
+    onToast(`${result.elements.length}개 요소로 캔버스를 갱신했습니다.`);
+  };
 
   return (
     <div className="bottom-panel">
@@ -89,6 +113,17 @@ export function ZplPanel({ onToast }: { onToast: (msg: string) => void }) {
         <span className="chip">
           {lines}줄 · {bytes}B
         </span>
+        {generator.id === 'zpl' && !editing && (
+          <button
+            onClick={() => {
+              setDraft(code);
+              setEditing(true);
+              setCollapsed(false);
+            }}
+          >
+            편집
+          </button>
+        )}
         <button
           onClick={async () => {
             const ok = await copyToClipboard(code);
@@ -110,10 +145,31 @@ export function ZplPanel({ onToast }: { onToast: (msg: string) => void }) {
           {collapsed ? '▲' : '▼'}
         </button>
       </div>
-      {!collapsed && (
+
+      {!collapsed && !editing && (
         <pre className="code-area" data-testid="zpl-output">
           {highlight(code, generator.id === 'zpl')}
         </pre>
+      )}
+
+      {!collapsed && editing && (
+        <>
+          <textarea
+            className="code-area"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            spellCheck={false}
+            style={{ width: '100%', border: 'none', display: 'block' }}
+          />
+          <div className="bottom-head">
+            <span className="hint">코드를 수정한 뒤 적용하면 캔버스가 재구성됩니다 (베스트 에포트 파싱).</span>
+            <span className="spacer" />
+            <button onClick={() => setEditing(false)}>취소</button>
+            <button className="primary" onClick={applyEdit}>
+              적용
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

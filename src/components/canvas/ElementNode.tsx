@@ -3,6 +3,7 @@ import { useRef } from 'react';
 import { Ellipse, Group, Image as KImage, Line as KLine, Rect, Text as KText } from 'react-konva';
 import { render1d, render2d } from '../../barcodes/render';
 import { useLoadedImage } from '../../hooks/useImage';
+import { resolveElement, sampleValues } from '../../preview';
 import { useStore } from '../../state/store';
 import type { Dpi } from '../../types';
 import type {
@@ -16,13 +17,23 @@ import type {
   ImageElement,
   LineElement,
   Rotation,
+  SymbolChar,
+  SymbolElement,
   TableElement,
   TextElement,
 } from '../../types';
 import { dotToMm } from '../../units';
-import { resolveElement, sampleValues } from '../../preview';
 
 const MIN_MM = 1;
+const SNAP_PX = 6;
+
+const SYMBOL_GLYPH: Record<SymbolChar, string> = {
+  A: '®',
+  B: '©',
+  C: '™',
+  D: 'UL',
+  E: 'CSA',
+};
 
 function shapeFill(color: 'B' | 'W'): string {
   return color === 'W' ? '#ffffff' : '#111111';
@@ -60,8 +71,7 @@ function BarcodeShape({
   w: number;
   h: number;
 }) {
-  const result =
-    el.type === 'barcode1d' ? render1d(el) : render2d(el);
+  const result = el.type === 'barcode1d' ? render1d(el) : render2d(el);
   if (!result.canvas) {
     return (
       <>
@@ -69,7 +79,7 @@ function BarcodeShape({
         <KText
           width={w}
           height={h}
-          text={'바코드 오류'}
+          text="바코드 오류"
           fontSize={Math.min(12, h / 2)}
           fill="#dc2626"
           align="center"
@@ -92,7 +102,7 @@ function ImageShape({ el, w, h }: { el: ImageElement; w: number; h: number }) {
         <KText
           width={w}
           height={h}
-          text={'이미지 없음'}
+          text="이미지 없음"
           fontSize={Math.min(12, h / 3)}
           fill="#94a3b8"
           align="center"
@@ -103,6 +113,22 @@ function ImageShape({ el, w, h }: { el: ImageElement; w: number; h: number }) {
     );
   }
   return <KImage image={img} width={w} height={h} listening={false} />;
+}
+
+function SymbolShape({ el, w, h }: { el: SymbolElement; w: number; h: number }) {
+  const big = el.symbolChar === 'D' || el.symbolChar === 'E';
+  return (
+    <KText
+      width={w}
+      height={h}
+      text={SYMBOL_GLYPH[el.symbolChar]}
+      fontSize={Math.min(w, h) * (big ? 0.42 : 0.92)}
+      fill="#111111"
+      align="center"
+      verticalAlign="middle"
+      listening={false}
+    />
+  );
 }
 
 function TableShape({ el, zoom, dpi }: { el: TableElement; zoom: number; dpi: Dpi }) {
@@ -169,6 +195,8 @@ function renderShape(el: DesignElement, w: number, h: number, dpi: Dpi, zoom: nu
       return <BarcodeShape el={el} w={w} h={h} />;
     case 'image':
       return <ImageShape el={el} w={w} h={h} />;
+    case 'symbol':
+      return <SymbolShape el={el} w={w} h={h} />;
     case 'table':
       return <TableShape el={el} zoom={zoom} dpi={dpi} />;
     case 'line': {
@@ -231,17 +259,41 @@ function renderShape(el: DesignElement, w: number, h: number, dpi: Dpi, zoom: nu
   }
 }
 
+/** Snap one axis position to the nearest target edge/centre. */
+function snapAxis(
+  pos: number,
+  size: number,
+  targets: number[],
+  threshold: number,
+): { pos: number; guide: number | null } {
+  const anchors = [0, size / 2, size];
+  let best: { pos: number; guide: number; delta: number } | null = null;
+  for (const off of anchors) {
+    for (const t of targets) {
+      const delta = Math.abs(pos + off - t);
+      if (delta < threshold && (!best || delta < best.delta)) {
+        best = { pos: t - off, guide: t, delta };
+      }
+    }
+  }
+  return best ? { pos: best.pos, guide: best.guide } : { pos, guide: null };
+}
+
 export function ElementNode({ element }: { element: DesignElement }) {
   const zoom = useStore((s) => s.ui.zoom);
   const dpi = useStore((s) => s.project.printerProfile.dpi);
   const snapToGrid = useStore((s) => s.ui.snapToGrid);
+  const snapToObjects = useStore((s) => s.ui.snapToObjects);
   const gridMm = useStore((s) => s.ui.gridMm);
   const selectedIds = useStore((s) => s.selectedIds);
+  const label = useStore((s) => s.project.label);
   const pushHistory = useStore((s) => s.pushHistory);
   const moveBy = useStore((s) => s.moveBy);
   const updateElement = useStore((s) => s.updateElement);
   const selectElement = useStore((s) => s.selectElement);
   const reprocessImage = useStore((s) => s.reprocessImage);
+  const setSnapGuides = useStore((s) => s.setSnapGuides);
+  const setEditingTextId = useStore((s) => s.setEditingTextId);
   const previewData = useStore((s) => s.ui.previewData);
   const variables = useStore((s) => s.project.variables);
 
@@ -253,11 +305,14 @@ export function ElementNode({ element }: { element: DesignElement }) {
   const w = el.widthMm * zoom;
   const h = el.heightMm * zoom;
   const selected = selectedIds.includes(el.id);
-  const snapMm = (v: number) => (snapToGrid ? Math.round(v / gridMm) * gridMm : v);
 
   const onMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const additive = e.evt.shiftKey;
     if (!selected || additive) selectElement(el.id, additive);
+  };
+
+  const onDblClick = () => {
+    if (el.type === 'text' && !el.locked) setEditingTextId(el.id);
   };
 
   const onDragStart = () => {
@@ -268,15 +323,46 @@ export function ElementNode({ element }: { element: DesignElement }) {
 
   const onDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
     const node = e.target;
-    const xMm = snapMm(node.x() / zoom);
-    const yMm = snapMm(node.y() / zoom);
+    let xMm = node.x() / zoom;
+    let yMm = node.y() / zoom;
+    if (snapToGrid) {
+      xMm = Math.round(xMm / gridMm) * gridMm;
+      yMm = Math.round(yMm / gridMm) * gridMm;
+    }
+    const single = !(selected && selectedIds.length > 1);
+    if (snapToObjects && single) {
+      const thr = SNAP_PX / zoom;
+      const xt = [0, label.widthMm / 2, label.widthMm];
+      const yt = [0, label.heightMm / 2, label.heightMm];
+      for (const other of label.elements) {
+        if (other.id === el.id || !other.visible) continue;
+        xt.push(other.xMm, other.xMm + other.widthMm / 2, other.xMm + other.widthMm);
+        yt.push(other.yMm, other.yMm + other.heightMm / 2, other.yMm + other.heightMm);
+      }
+      for (const g of label.guides ?? []) {
+        if (g.axis === 'x') xt.push(g.posMm);
+        else yt.push(g.posMm);
+      }
+      const rx = snapAxis(xMm, el.widthMm, xt, thr);
+      const ry = snapAxis(yMm, el.heightMm, yt, thr);
+      xMm = rx.pos;
+      yMm = ry.pos;
+      setSnapGuides(
+        rx.guide !== null ? [rx.guide] : [],
+        ry.guide !== null ? [ry.guide] : [],
+      );
+    }
     node.x(xMm * zoom);
     node.y(yMm * zoom);
     const dx = xMm - dragLast.current.x;
     const dy = yMm - dragLast.current.y;
     dragLast.current = { x: xMm, y: yMm };
-    const ids = selected && selectedIds.length > 1 ? selectedIds : [el.id];
+    const ids = single ? [el.id] : selectedIds;
     moveBy(ids, dx, dy);
+  };
+
+  const onDragEnd = () => {
+    setSnapGuides([], []);
   };
 
   const onTransformEnd = (e: Konva.KonvaEventObject<Event>) => {
@@ -315,8 +401,11 @@ export function ElementNode({ element }: { element: DesignElement }) {
       opacity={el.locked ? 0.55 : 1}
       draggable={!el.locked}
       onMouseDown={onMouseDown}
+      onDblClick={onDblClick}
+      onDblTap={onDblClick}
       onDragStart={onDragStart}
       onDragMove={onDragMove}
+      onDragEnd={onDragEnd}
       onTransformEnd={onTransformEnd}
     >
       <Rect width={w} height={h} fill="rgba(127,127,127,0.001)" />

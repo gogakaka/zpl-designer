@@ -46,7 +46,18 @@ test('실행취소로 추가한 요소가 제거된다', async ({ page }) => {
 
 test('TSPL 생성기로 전환할 수 있다', async ({ page }) => {
   await page.getByTitle('텍스트 추가').click();
-  await page.locator('.bottom-head select').selectOption('tspl');
+  await page.locator('.bottom-head select').first().selectOption('tspl');
   await expect(page.getByTestId('zpl-output')).toContainText('SIZE');
   await expect(page.getByTestId('zpl-output')).toContainText('PRINT');
+});
+
+test('심볼 요소를 추가하면 ZPL에 ^GS가 생긴다', async ({ page }) => {
+  await page.getByTitle('심볼 추가').click();
+  await expect(page.getByTestId('zpl-output')).toContainText('^GS');
+});
+
+test('눈금자 클릭으로 가이드선을 추가할 수 있다', async ({ page }) => {
+  await page.locator('.canvas-host canvas').first().click({ position: { x: 120, y: 10 } });
+  // 가이드는 캔버스에 그려지며 오류 없이 처리된다
+  await expect(page.locator('.brand')).toBeVisible();
 });

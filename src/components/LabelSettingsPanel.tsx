@@ -1,7 +1,7 @@
 import { useStore } from '../state/store';
 import type { Dpi, MediaType, Rotation } from '../types';
 import { fromMm, toMm } from '../units';
-import { NumberInput, Row, SegButtons, SelectInput, TextInput } from './controls';
+import { CheckRow, NumberInput, Row, SegButtons, SelectInput, TextInput } from './controls';
 
 export function LabelSettingsPanel() {
   const project = useStore((s) => s.project);
@@ -10,6 +10,8 @@ export function LabelSettingsPanel() {
   const updateProfile = useStore((s) => s.updateProfile);
   const setProjectName = useStore((s) => s.setProjectName);
   const reprocessImage = useStore((s) => s.reprocessImage);
+  const setBackgroundImage = useStore((s) => s.setBackgroundImage);
+  const updateBackgroundImage = useStore((s) => s.updateBackgroundImage);
 
   const label = project.label;
   const profile = project.printerProfile;
@@ -121,6 +123,47 @@ export function LabelSettingsPanel() {
             onChange={(v) => updateLabel({ printQuantity: Math.max(1, Math.round(v)) })}
           />
         </Row>
+      </div>
+
+      <div className="section">
+        <div className="section-title">배경 추적 이미지</div>
+        {!label.backgroundImage && (
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              const r = new FileReader();
+              r.onload = () =>
+                setBackgroundImage({ dataUrl: String(r.result), opacity: 0.5, visible: true });
+              r.readAsDataURL(f);
+            }}
+          />
+        )}
+        {label.backgroundImage && (
+          <>
+            <CheckRow
+              label="배경 표시"
+              value={label.backgroundImage.visible}
+              onChange={(v) => updateBackgroundImage({ visible: v })}
+            />
+            <Row label="투명도">
+              <input
+                type="range"
+                min={0.05}
+                max={1}
+                step={0.05}
+                value={label.backgroundImage.opacity}
+                onChange={(e) => updateBackgroundImage({ opacity: Number(e.target.value) })}
+              />
+            </Row>
+            <button className="danger" onClick={() => setBackgroundImage(null)}>
+              배경 이미지 제거
+            </button>
+          </>
+        )}
+        <div className="hint">참고용 배경 이미지는 ZPL 출력에 포함되지 않습니다.</div>
       </div>
     </div>
   );

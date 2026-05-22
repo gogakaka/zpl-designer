@@ -13,7 +13,8 @@ export type ElementType =
   | 'ellipse'
   | 'diagonal'
   | 'image'
-  | 'table';
+  | 'table'
+  | 'symbol';
 
 export interface PrinterProfile {
   name: string;
@@ -41,6 +42,11 @@ export interface BaseElement {
 export type ZplFontId = '0' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
 export type TextAlign = 'L' | 'C' | 'R';
 
+/** Counter / date-time dynamic field bound to a text element. */
+export type DynamicField =
+  | { kind: 'counter'; start: number; step: number; padZeros: boolean }
+  | { kind: 'datetime'; format: string };
+
 export interface TextElement extends BaseElement {
   type: 'text';
   content: string;
@@ -52,6 +58,7 @@ export interface TextElement extends BaseElement {
   maxLines: number;
   lineGapDot: number;
   reverse: boolean;
+  dynamic?: DynamicField;
 }
 
 export type Barcode1DSymbology =
@@ -76,6 +83,8 @@ export interface Barcode1DElement extends BaseElement {
   showHrt: boolean;
   hrtAbove: boolean;
   checkDigit: boolean;
+  /** Code 128 GS1-128 (UCC/EAN) mode with FNC1. */
+  gs1: boolean;
 }
 
 export type Barcode2DSymbology = 'QR' | 'DATAMATRIX' | 'PDF417' | 'AZTEC' | 'MAXICODE';
@@ -145,7 +154,17 @@ export interface ImageElement extends BaseElement {
   dither: DitherMode;
   threshold: number;
   invert: boolean;
+  /** Store once in printer memory (~DG) and recall (^XG) instead of inline ^GFA. */
+  useMemory: boolean;
   mono?: MonochromeData;
+}
+
+export type SymbolChar = 'A' | 'B' | 'C' | 'D' | 'E';
+
+export interface SymbolElement extends BaseElement {
+  type: 'symbol';
+  /** ^GS symbol: A=registered, B=copyright, C=trademark, D=UL, E=CSA. */
+  symbolChar: SymbolChar;
 }
 
 export interface TableCell {
@@ -177,9 +196,24 @@ export type DesignElement =
   | EllipseElement
   | DiagonalElement
   | ImageElement
-  | TableElement;
+  | TableElement
+  | SymbolElement;
 
 export type MediaType = 'continuous' | 'diecut';
+
+/** A user alignment guide line. */
+export interface Guide {
+  id: string;
+  axis: 'x' | 'y';
+  posMm: number;
+}
+
+/** A non-printing background image used for tracing a design. */
+export interface BackgroundImage {
+  dataUrl: string;
+  opacity: number;
+  visible: boolean;
+}
 
 export interface LabelDoc {
   widthMm: number;
@@ -191,6 +225,8 @@ export interface LabelDoc {
   printSpeed: number;
   printQuantity: number;
   elements: DesignElement[];
+  guides?: Guide[];
+  backgroundImage?: BackgroundImage;
 }
 
 export interface Variable {

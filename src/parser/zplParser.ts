@@ -75,6 +75,7 @@ interface FieldState {
   bc1d?: { sym: Barcode1DSymbology; rot: Rotation; height: number; hrt: boolean };
   bc2d?: { sym: Barcode2DSymbology; rot: Rotation; mag: number };
   graphic?: { kind: string; nums: number[]; color: string; orient: string };
+  symbol?: { rot: Rotation; h: number; w: number };
   fd?: string;
   reverse?: boolean;
 }
@@ -162,6 +163,26 @@ export function parseZpl(zpl: string, dpi: Dpi): ZplParseResult {
       return;
     }
 
+    if (f.symbol) {
+      const sym = f.symbol;
+      const chars = new Set(['A', 'B', 'C', 'D', 'E']);
+      const ch = (f.fd ?? 'C').trim().charAt(0).toUpperCase();
+      elements.push({
+        id: uid(),
+        type: 'symbol',
+        name: nm('심볼'),
+        xMm: x,
+        yMm: y,
+        widthMm: dotToMm(sym.w || 60, dpi),
+        heightMm: dotToMm(sym.h || 60, dpi),
+        rotation: sym.rot,
+        locked: false,
+        visible: true,
+        symbolChar: (chars.has(ch) ? ch : 'C') as 'A' | 'B' | 'C' | 'D' | 'E',
+      });
+      return;
+    }
+
     if (f.bc1d && f.fd !== undefined) {
       const b = f.bc1d;
       const height = b.height || f.by?.height || 80;
@@ -173,7 +194,7 @@ export function parseZpl(zpl: string, dpi: Dpi): ZplParseResult {
         symbology: b.sym, data: decodeFd(f.fd),
         moduleWidthDot: f.by?.module ?? 2, ratio: f.by?.ratio ?? 3,
         barHeightDot: Math.round(height), showHrt: b.hrt, hrtAbove: false,
-        checkDigit: false,
+        checkDigit: false, gs1: false,
       });
       return;
     }
@@ -272,6 +293,12 @@ export function parseZpl(zpl: string, dpi: Dpi): ZplParseResult {
       case 'FS':
         finalize();
         break;
+      case 'GS': {
+        if (!field) field = { foX: 0, foY: 0 };
+        const p = nums(rest.slice(1));
+        field.symbol = { rot: ROT_REV[rest[0]] ?? 0, h: p[0] || 60, w: p[1] || 60 };
+        break;
+      }
       case 'GB':
       case 'GC':
       case 'GE':

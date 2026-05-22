@@ -15,6 +15,7 @@ import type {
   LineElement,
   PrinterProfile,
   Project,
+  SymbolElement,
   TableElement,
   TextElement,
 } from './types';
@@ -32,6 +33,7 @@ const TYPE_LABELS: Record<ElementType, string> = {
   diagonal: '대각선',
   image: '이미지',
   table: '테이블',
+  symbol: '심볼',
 };
 
 function nextName(type: ElementType): string {
@@ -88,6 +90,7 @@ export function createBarcode1d(xMm = 5, yMm = 5): Barcode1DElement {
     showHrt: true,
     hrtAbove: false,
     checkDigit: false,
+    gs1: false,
   };
 }
 
@@ -160,6 +163,15 @@ export function createImage(xMm = 5, yMm = 5): ImageElement {
     dither: 'floyd-steinberg',
     threshold: 128,
     invert: false,
+    useMemory: false,
+  };
+}
+
+export function createSymbol(xMm = 5, yMm = 5): SymbolElement {
+  return {
+    ...base('symbol', xMm, yMm, 10, 10),
+    type: 'symbol',
+    symbolChar: 'C',
   };
 }
 
@@ -210,6 +222,8 @@ export function createElement(type: ElementType, xMm = 5, yMm = 5): DesignElemen
       return createImage(xMm, yMm);
     case 'table':
       return createTable(xMm, yMm);
+    case 'symbol':
+      return createSymbol(xMm, yMm);
   }
 }
 
@@ -233,6 +247,7 @@ export function createLabel(): LabelDoc {
     printSpeed: 4,
     printQuantity: 1,
     elements: [],
+    guides: [],
   };
 }
 

@@ -12,6 +12,7 @@ import type {
   LineElement,
   Project,
   Rotation,
+  SymbolElement,
   TableElement,
   TextElement,
 } from '../types';
@@ -39,9 +40,18 @@ function pos(el: { xMm: number; yMm: number }, dpi: Dpi): string {
   return `^FO${mmToDot(el.xMm, dpi)},${mmToDot(el.yMm, dpi)}`;
 }
 
+export function formatDateTime(d: Date, fmt: string): string {
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  return fmt
+    .replace(/YYYY/g, String(d.getFullYear()))
+    .replace(/MM/g, p2(d.getMonth() + 1))
+    .replace(/DD/g, p2(d.getDate()))
+    .replace(/HH/g, p2(d.getHours()))
+    .replace(/mm/g, p2(d.getMinutes()))
+    .replace(/ss/g, p2(d.getSeconds()));
+}
+
 function genText(el: TextElement, dpi: Dpi, opts: ExportOptions): string {
-  const content = resolveVariables(el.content, opts);
-  const enc = encodeFd(content);
   let s = pos(el, dpi);
   if (el.reverse) s += '^FR';
   s += `^A${el.fontId}${ROT[el.rotation]},${el.fontHeightDot},${el.fontWidthDot}`;
@@ -51,9 +61,17 @@ function genText(el: TextElement, dpi: Dpi, opts: ExportOptions): string {
     const lines = el.multiline ? el.maxLines : 1;
     s += `^FB${blockW},${lines},${el.lineGapDot},${el.align},0`;
   }
+  if (el.dynamic?.kind === 'counter') {
+    const d = el.dynamic;
+    return `${s}^SN${d.start},${d.step},${d.padZeros ? 'Y' : 'N'}^FS`;
+  }
+  let content = resolveVariables(el.content, opts);
+  if (el.dynamic?.kind === 'datetime') {
+    content = formatDateTime(new Date(), el.dynamic.format);
+  }
+  const enc = encodeFd(content);
   if (enc.fh) s += '^FH_';
-  s += `^FD${enc.data}^FS`;
-  return s;
+  return `${s}^FD${enc.data}^FS`;
 }
 
 function gen1d(el: Barcode1DElement, dpi: Dpi, opts: ExportOptions): string {
@@ -65,7 +83,7 @@ function gen1d(el: Barcode1DElement, dpi: Dpi, opts: ExportOptions): string {
   let bc: string;
   switch (el.symbology) {
     case 'CODE128':
-      bc = `^BC${rot},${h},${f},${g},${e},N`;
+      bc = `^BC${rot},${h},${f},${g},${e},${el.gs1 ? 'D' : 'N'}`;
       break;
     case 'CODE39':
       bc = `^B3${rot},${e},${h},${f},${g}`;
@@ -160,13 +178,22 @@ function genDiagonal(el: DiagonalElement, dpi: Dpi): string {
   return `${pos(el, dpi)}^GD${w},${h},${Math.max(1, el.thicknessDot)},${el.color},${o}^FS`;
 }
 
-function genImage(el: ImageElement, dpi: Dpi): string {
+function genImage(el: ImageElement, dpi: Dpi, memoryName?: string): string {
   if (!el.mono) {
     return `^FX[${el.name}] 이미지 미처리 — 속성 패널에서 이미지를 업로드하세요^FS`;
+  }
+  if (el.useMemory && memoryName) {
+    return `${pos(el, dpi)}^XGR:${memoryName}.GRF,1,1^FS`;
   }
   const { rowBytes, heightDot, hex } = el.mono;
   const total = rowBytes * heightDot;
   return `${pos(el, dpi)}^GFA,${total},${total},${rowBytes},${hex}^FS`;
+}
+
+function genSymbol(el: SymbolElement, dpi: Dpi): string {
+  const w = Math.max(1, mmToDot(el.widthMm, dpi));
+  const h = Math.max(1, mmToDot(el.heightMm, dpi));
+  return `${pos(el, dpi)}^GS${ROT[el.rotation]},${h},${w}^FD${el.symbolChar}^FS`;
 }
 
 export function genTable(el: TableElement, dpi: Dpi, opts: ExportOptions): string[] {
@@ -214,7 +241,12 @@ export function genTable(el: TableElement, dpi: Dpi, opts: ExportOptions): strin
   return lines;
 }
 
-function genElement(el: DesignElement, dpi: Dpi, opts: ExportOptions): string[] {
+function genElement(
+  el: DesignElement,
+  dpi: Dpi,
+  opts: ExportOptions,
+  memNames: Map<string, string>,
+): string[] {
   switch (el.type) {
     case 'text':
       return [genText(el, dpi, opts)];
@@ -233,9 +265,11 @@ function genElement(el: DesignElement, dpi: Dpi, opts: ExportOptions): string[] 
     case 'diagonal':
       return [genDiagonal(el, dpi)];
     case 'image':
-      return [genImage(el, dpi)];
+      return [genImage(el, dpi, memNames.get(el.id))];
     case 'table':
       return genTable(el, dpi, opts);
+    case 'symbol':
+      return [genSymbol(el, dpi)];
   }
 }
 
@@ -243,6 +277,18 @@ export function generateZpl(project: Project, options: ExportOptions): string {
   const dpi = project.printerProfile.dpi;
   const label = project.label;
   const out: string[] = [];
+
+  // Images flagged for printer memory: download once (~DG), recall (^XG).
+  const memNames = new Map<string, string>();
+  let imgIdx = 0;
+  for (const el of label.elements) {
+    if (el.type === 'image' && el.visible && el.useMemory && el.mono) {
+      const name = `IMG${imgIdx++}`;
+      memNames.set(el.id, name);
+      const total = el.mono.rowBytes * el.mono.heightDot;
+      out.push(`~DGR:${name}.GRF,${total},${el.mono.rowBytes},${el.mono.hex}`);
+    }
+  }
 
   out.push('^XA');
   if (options.includeComments) {
@@ -260,7 +306,7 @@ export function generateZpl(project: Project, options: ExportOptions): string {
   for (const el of label.elements) {
     if (!el.visible) continue;
     if (options.includeComments) out.push(`^FX ${el.name}^FS`);
-    out.push(...genElement(el, dpi, options));
+    out.push(...genElement(el, dpi, options, memNames));
   }
 
   if (label.printQuantity > 1) out.push(`^PQ${label.printQuantity}`);

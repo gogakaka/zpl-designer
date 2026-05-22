@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useStore } from '../../state/store';
 import type { Dpi } from '../../types';
 import type { Unit } from '../../units';
 import { dotToMm } from '../../units';
@@ -22,6 +23,7 @@ function cssVar(name: string): string {
 export function Rulers({ width, height, panX, panY, zoom, unit, dpi }: Props) {
   const topRef = useRef<HTMLCanvasElement>(null);
   const leftRef = useRef<HTMLCanvasElement>(null);
+  const addGuide = useStore((s) => s.addGuide);
 
   const stepMm = unit === 'inch' ? 25.4 / 2 : unit === 'dot' ? dotToMm(100, dpi) : 10;
   const fmt = (mm: number): string => {
@@ -96,8 +98,18 @@ export function Rulers({ width, height, panX, panY, zoom, unit, dpi }: Props) {
 
   return (
     <>
-      <canvas ref={topRef} style={{ position: 'absolute', top: 0, left: 0, zIndex: 4 }} />
-      <canvas ref={leftRef} style={{ position: 'absolute', top: 0, left: 0, zIndex: 4 }} />
+      <canvas
+        ref={topRef}
+        title="클릭하여 세로 가이드 추가"
+        onClick={(e) => addGuide('x', (e.nativeEvent.offsetX - panX) / zoom)}
+        style={{ position: 'absolute', top: 0, left: 0, zIndex: 4, cursor: 'col-resize' }}
+      />
+      <canvas
+        ref={leftRef}
+        title="클릭하여 가로 가이드 추가"
+        onClick={(e) => addGuide('y', (e.nativeEvent.offsetY - panY) / zoom)}
+        style={{ position: 'absolute', top: 0, left: 0, zIndex: 4, cursor: 'row-resize' }}
+      />
       <div className="ruler-corner" />
       <span aria-hidden style={{ position: 'absolute', left: 5, top: 4, fontSize: 9, color: 'var(--muted)', zIndex: 6 }}>
         {unit}

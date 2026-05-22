@@ -12,6 +12,7 @@ const GLYPH: Record<ElementType, string> = {
   diagonal: '╱',
   image: '▦',
   table: '田',
+  symbol: '®',
 };
 
 export function LayersPanel() {

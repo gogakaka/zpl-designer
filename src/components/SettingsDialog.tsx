@@ -43,6 +43,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           value={ui.snapToGrid}
           onChange={(v) => setUi({ snapToGrid: v })}
         />
+        <CheckRow
+          label="오브젝트에 스냅 (정렬 가이드)"
+          value={ui.snapToObjects}
+          onChange={(v) => setUi({ snapToObjects: v })}
+        />
         <Row label="그리드 간격(mm)">
           <NumberInput
             value={ui.gridMm}

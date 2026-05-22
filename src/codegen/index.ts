@@ -11,5 +11,5 @@ export function getGenerator(id: string): CodeGenerator {
 
 export type { CodeGenerator } from './types';
 export { resolveVariables } from './types';
-export { zplGenerator, generateZpl } from './zpl';
+export { zplGenerator, generateZpl, formatDateTime } from './zpl';
 export { tsplGenerator, generateTspl } from './tspl';

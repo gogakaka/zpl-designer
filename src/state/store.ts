@@ -6,6 +6,7 @@ import type { Unit } from '../units';
 import { templates } from '../templates';
 import { uid } from '../ids';
 import type {
+  BackgroundImage,
   DesignElement,
   ElementType,
   ImageElement,
@@ -47,6 +48,8 @@ export interface DesignerState {
   fitNonce: number;
   csvRows: Record<string, string>[];
   clipboard: DesignElement[];
+  editingTextId: string | null;
+  snapGuides: { x: number[]; y: number[] };
 
   // project lifecycle
   replaceProject: (p: Project) => void;
@@ -102,6 +105,15 @@ export interface DesignerState {
   updateVariable: (index: number, patch: Partial<Variable>) => void;
   removeVariable: (index: number) => void;
   applyRecord: (values: Record<string, string>) => void;
+
+  // guides / canvas helpers
+  setEditingTextId: (id: string | null) => void;
+  setSnapGuides: (x: number[], y: number[]) => void;
+  addGuide: (axis: 'x' | 'y', posMm: number) => void;
+  moveGuide: (id: string, posMm: number) => void;
+  removeGuide: (id: string) => void;
+  setBackgroundImage: (bg: BackgroundImage | null) => void;
+  updateBackgroundImage: (patch: Partial<BackgroundImage>) => void;
 
   // history
   pushHistory: (tag?: string) => void;
@@ -176,6 +188,8 @@ export const useStore = create<DesignerState>((set, get) => {
     fitNonce: 0,
     csvRows: [],
     clipboard: [],
+    editingTextId: null,
+    snapGuides: { x: [], y: [] },
 
     replaceProject: (p) => set({ project: p, selectedIds: [], past: [], future: [] }),
 
@@ -504,6 +518,37 @@ export const useStore = create<DesignerState>((set, get) => {
           if (values[v.name] !== undefined) v.sampleValue = values[v.name];
         }
       }),
+
+    setEditingTextId: (id) => set({ editingTextId: id }),
+
+    setSnapGuides: (x, y) => set({ snapGuides: { x, y } }),
+
+    addGuide: (axis, posMm) =>
+      commit((p) => {
+        if (!p.label.guides) p.label.guides = [];
+        p.label.guides.push({ id: uid('gd'), axis, posMm });
+      }),
+
+    moveGuide: (id, posMm) =>
+      commit((p) => {
+        const g = p.label.guides?.find((x) => x.id === id);
+        if (g) g.posMm = posMm;
+      }, `guide:${id}`),
+
+    removeGuide: (id) =>
+      commit((p) => {
+        if (p.label.guides) p.label.guides = p.label.guides.filter((g) => g.id !== id);
+      }),
+
+    setBackgroundImage: (bg) =>
+      commit((p) => {
+        p.label.backgroundImage = bg ?? undefined;
+      }),
+
+    updateBackgroundImage: (patch) =>
+      commit((p) => {
+        if (p.label.backgroundImage) Object.assign(p.label.backgroundImage, patch);
+      }, 'bgimg'),
 
     pushHistory: (tag = '') => {
       const now = Date.now();
