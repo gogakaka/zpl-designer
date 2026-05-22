@@ -42,41 +42,46 @@ PRD(`docs/PRD.md`) 전체 구현 진행 상황. 모듈 단위로 세분화하여
 - [x] I1. `src/templates/index.ts` — 내장 템플릿 5종
 
 ## J. UI — 애플리케이션 셸
-- [ ] J1. `src/main.tsx` / `src/App.tsx` / `src/index.css` / `src/theme.css`
-- [ ] J2. `src/components/Toolbar.tsx` — 상단 메뉴/툴바
+- [x] J1. `src/main.tsx` / `src/App.tsx` / `src/index.css`
+- [x] J2. `src/components/Toolbar.tsx` — 상단 메뉴/툴바
 
 ## K. UI — 캔버스
-- [ ] K1. `src/components/canvas/DesignCanvas.tsx` — Stage/줌/팬/스냅/Transformer
-- [ ] K2. `src/components/canvas/ElementNode.tsx` — 요소별 Konva 렌더
-- [ ] K3. `src/components/canvas/Rulers.tsx` — 눈금자/그리드
+- [x] K1. `src/components/canvas/DesignCanvas.tsx` — Stage/줌/팬/스냅/Transformer
+- [x] K2. `src/components/canvas/ElementNode.tsx` — 요소별 Konva 렌더
+- [x] K3. `src/components/canvas/Rulers.tsx` — 눈금자/그리드
 
 ## L. UI — 패널
-- [ ] L1. `src/components/ToolPalette.tsx` — 좌측 도구 팔레트
-- [ ] L2. `src/components/PropertyPanel.tsx` — 요소별 속성 폼
-- [ ] L3. `src/components/LayersPanel.tsx` — 레이어 트리
-- [ ] L4. `src/components/ZplPanel.tsx` — ZPL 코드 패널(복사/다운로드)
-- [ ] L5. `src/components/LabelSettingsPanel.tsx` — 라벨/프린터 설정
-- [ ] L6. `src/components/DataBindingPanel.tsx` — 변수/CSV 머지
+- [x] L1. `src/components/ToolPalette.tsx` — 좌측 도구 팔레트
+- [x] L2. `src/components/PropertyPanel.tsx` — 요소별 속성 폼
+- [x] L3. `src/components/LayersPanel.tsx` — 레이어 트리
+- [x] L4. `src/components/ZplPanel.tsx` — ZPL 코드 패널(복사/다운로드)
+- [x] L5. `src/components/LabelSettingsPanel.tsx` — 라벨/프린터 설정
+- [x] L6. `src/components/DataBindingPanel.tsx` — 변수/CSV 머지
 
 ## M. UI — 모달
-- [ ] M1. `src/components/TemplateGallery.tsx`
-- [ ] M2. `src/components/ImportDialog.tsx` — ZPL 가져오기
-- [ ] M3. `src/components/PreviewModal.tsx` — 인쇄 미리보기(+CSV 다중)
-- [ ] M4. `src/components/SettingsDialog.tsx` — 설정/테마
+- [x] M1. `src/components/TemplateGallery.tsx`
+- [x] M2. `src/components/ImportDialog.tsx` — ZPL 가져오기
+- [x] M3. `src/components/PreviewModal.tsx` — 인쇄 미리보기(+CSV 다중)
+- [x] M4. `src/components/SettingsDialog.tsx` — 설정/테마
 
 ## N. 상호작용
-- [ ] N1. `src/hooks/useKeyboardShortcuts.ts` — 단축키
-- [ ] N2. 우클릭 컨텍스트 메뉴
+- [x] N1. `src/hooks/useKeyboardShortcuts.ts` — 단축키
+- [x] N2. `src/components/ContextMenu.tsx` — 우클릭 컨텍스트 메뉴
 
 ## O. 테스트 & MCP
 - [x] O1. `.mcp.json` — chrome-devtools-mcp
-- [ ] O2. `tests/unit/*` — codegen/parser/units/validate 단위 테스트
-- [ ] O3. `tests/e2e/*` — Playwright E2E 시나리오
-- [ ] O4. `docs/TEST_SCENARIOS.md` — chrome-devtools-mcp 수동 테스트 시나리오
+- [x] O2. `tests/unit/*` — codegen/parser/units/validation/store 단위 테스트(30개)
+- [x] O3. `tests/e2e/designer.spec.ts` — Playwright E2E 시나리오
+- [x] O4. `docs/TEST_SCENARIOS.md` — 테스트 환경 & 시나리오 문서
 
 ## P. 마무리
-- [ ] P1. `npm run build` 통과
-- [ ] P2. `npm run test` 통과
-- [ ] P3. dev 서버 구동 + 스모크 확인
-- [ ] P4. README 갱신
-- [ ] P5. 커밋 & 푸시
+- [x] P1. `npm run build` 통과
+- [x] P2. `npm run test` 통과 (30/30)
+- [x] P3. dev 서버 구동 + 모듈 변환 스모크 확인
+- [x] P4. README 갱신
+- [x] P5. 커밋 & 푸시
+
+## 비고
+- E2E(Playwright) 및 chrome-devtools-mcp는 코드/설정 완비. 단, 본 샌드박스는
+  네트워크 정책상 브라우저 바이너리 다운로드가 차단되어 브라우저 런타임 실행은
+  로컬 환경에서 수행해야 한다(`npm run test:e2e:install && npm run test:e2e`).

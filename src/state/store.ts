@@ -31,6 +31,7 @@ export interface UiState {
   theme: 'light' | 'dark';
   activeTool: Tool;
   generatorId: string;
+  previewData: boolean;
 }
 
 interface ElementPatch {
@@ -43,6 +44,9 @@ export interface DesignerState {
   past: Project[];
   future: Project[];
   ui: UiState;
+  fitNonce: number;
+  csvRows: Record<string, string>[];
+  clipboard: DesignElement[];
 
   // project lifecycle
   replaceProject: (p: Project) => void;
@@ -64,6 +68,8 @@ export interface DesignerState {
   updateElements: (ids: string[], patch: ElementPatch, history?: boolean) => void;
   deleteSelected: () => void;
   duplicateSelected: () => void;
+  copySelected: () => void;
+  pasteClipboard: () => void;
   reprocessImage: (id: string) => Promise<void>;
 
   // selection
@@ -89,11 +95,13 @@ export interface DesignerState {
   toggleLock: (id: string) => void;
   toggleVisible: (id: string) => void;
   nudgeSelected: (dxMm: number, dyMm: number) => void;
+  moveBy: (ids: string[], dxMm: number, dyMm: number) => void;
 
   // variables
   addVariable: () => void;
   updateVariable: (index: number, patch: Partial<Variable>) => void;
   removeVariable: (index: number) => void;
+  applyRecord: (values: Record<string, string>) => void;
 
   // history
   pushHistory: (tag?: string) => void;
@@ -102,6 +110,8 @@ export interface DesignerState {
 
   // ui
   setUi: (patch: Partial<UiState>) => void;
+  requestFit: () => void;
+  setCsvRows: (rows: Record<string, string>[]) => void;
 }
 
 let lastPushAt = 0;
@@ -119,6 +129,7 @@ function defaultUi(): UiState {
     theme: 'light',
     activeTool: 'select',
     generatorId: 'zpl',
+    previewData: false,
   };
 }
 
@@ -162,6 +173,9 @@ export const useStore = create<DesignerState>((set, get) => {
     past: [],
     future: [],
     ui: defaultUi(),
+    fitNonce: 0,
+    csvRows: [],
+    clipboard: [],
 
     replaceProject: (p) => set({ project: p, selectedIds: [], past: [], future: [] }),
 
@@ -240,6 +254,34 @@ export const useStore = create<DesignerState>((set, get) => {
           newIds.push(copy.id);
         }
         p.label.elements.push(...copies);
+      });
+      set({ selectedIds: newIds });
+    },
+
+    copySelected: () => {
+      const ids = expandGroups(get().selectedIds);
+      const els = get().project.label.elements.filter((e) => ids.includes(e.id));
+      set({ clipboard: els.map((e) => clone(e)) });
+    },
+
+    pasteClipboard: () => {
+      const clip = get().clipboard;
+      if (!clip.length) return;
+      const newIds: string[] = [];
+      commit((p) => {
+        const groupRemap = new Map<string, string>();
+        for (const src of clip) {
+          const copy = clone(src);
+          copy.id = uid();
+          copy.xMm += 4;
+          copy.yMm += 4;
+          if (src.groupId) {
+            if (!groupRemap.has(src.groupId)) groupRemap.set(src.groupId, uid('grp'));
+            copy.groupId = groupRemap.get(src.groupId);
+          }
+          p.label.elements.push(copy);
+          newIds.push(copy.id);
+        }
       });
       set({ selectedIds: newIds });
     },
@@ -431,6 +473,16 @@ export const useStore = create<DesignerState>((set, get) => {
       }, 'nudge');
     },
 
+    moveBy: (ids, dxMm, dyMm) =>
+      update((p) => {
+        for (const el of p.label.elements) {
+          if (ids.includes(el.id) && !el.locked) {
+            el.xMm += dxMm;
+            el.yMm += dyMm;
+          }
+        }
+      }),
+
     addVariable: () =>
       commit((p) => {
         p.variables.push({ name: `변수${p.variables.length + 1}`, sampleValue: '' });
@@ -444,6 +496,13 @@ export const useStore = create<DesignerState>((set, get) => {
     removeVariable: (index) =>
       commit((p) => {
         p.variables.splice(index, 1);
+      }),
+
+    applyRecord: (values) =>
+      commit((p) => {
+        for (const v of p.variables) {
+          if (values[v.name] !== undefined) v.sampleValue = values[v.name];
+        }
       }),
 
     pushHistory: (tag = '') => {
@@ -485,5 +544,9 @@ export const useStore = create<DesignerState>((set, get) => {
     },
 
     setUi: (patch) => set({ ui: { ...get().ui, ...patch } }),
+
+    requestFit: () => set((s) => ({ fitNonce: s.fitNonce + 1 })),
+
+    setCsvRows: (rows) => set({ csvRows: rows }),
   };
 });
