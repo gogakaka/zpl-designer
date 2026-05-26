@@ -150,6 +150,23 @@ function SinglePanel({ element }: { element: DesignElement }) {
   const el = element;
   const upd = (patch: Record<string, unknown>) => updateElement(el.id, patch);
 
+  // 테이블의 폭/높이는 colWidthsMm/rowHeightsMm 합으로 출력되므로,
+  // 폭·높이 입력을 바꿀 때 열·행 크기를 비례 스케일해야 ZPL과 캔버스에 반영된다.
+  const updSize = (patch: { widthMm?: number; heightMm?: number }) => {
+    if (el.type !== 'table') return upd(patch);
+    const t = el as TableElement;
+    const next: Record<string, unknown> = { ...patch };
+    if (patch.widthMm !== undefined && t.widthMm > 0) {
+      const scale = patch.widthMm / t.widthMm;
+      next.colWidthsMm = t.colWidthsMm.map((w) => Math.max(0.1, w * scale));
+    }
+    if (patch.heightMm !== undefined && t.heightMm > 0) {
+      const scale = patch.heightMm / t.heightMm;
+      next.rowHeightsMm = t.rowHeightsMm.map((h) => Math.max(0.1, h * scale));
+    }
+    upd(next);
+  };
+
   useEffect(() => {
     if (el.type !== 'image' || !el.sourceDataUrl) return;
     const t = setTimeout(() => void reprocessImage(el.id), 160);
@@ -183,8 +200,8 @@ function SinglePanel({ element }: { element: DesignElement }) {
           <LabeledNum label="Y" value={fromMm(el.yMm, unit, dpi)} onChange={(v) => upd({ yMm: toMm(v, unit, dpi) })} />
         </div>
         <div className="row-2">
-          <LabeledNum label="폭" value={fromMm(el.widthMm, unit, dpi)} onChange={(v) => upd({ widthMm: Math.max(0.1, toMm(v, unit, dpi)) })} />
-          <LabeledNum label="높이" value={fromMm(el.heightMm, unit, dpi)} onChange={(v) => upd({ heightMm: Math.max(0.1, toMm(v, unit, dpi)) })} />
+          <LabeledNum label="폭" value={fromMm(el.widthMm, unit, dpi)} onChange={(v) => updSize({ widthMm: Math.max(0.1, toMm(v, unit, dpi)) })} />
+          <LabeledNum label="높이" value={fromMm(el.heightMm, unit, dpi)} onChange={(v) => updSize({ heightMm: Math.max(0.1, toMm(v, unit, dpi)) })} />
         </div>
         <Row label="회전">
           <SelectInput
