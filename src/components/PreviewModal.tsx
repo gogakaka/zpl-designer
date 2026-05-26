@@ -44,7 +44,13 @@ export function PreviewModal({
     const wIn = Math.max(0.2, project.label.widthMm / 25.4);
     const hIn = Math.max(0.2, project.label.heightMm / 25.4);
     const url = `https://api.labelary.com/v1/printers/${dpmm}dpmm/labels/${wIn.toFixed(2)}x${hIn.toFixed(2)}/0/`;
-    fetch(url, { method: 'POST', headers: { Accept: 'image/png' }, body: zpl })
+    fetch(url, {
+      method: 'POST',
+      // Labelary는 Content-Type이 비어 있거나 text/plain이면 415를 돌려줌.
+      // x-www-form-urlencoded로 보내야 ZPL 본문을 그대로 받아들임.
+      headers: { Accept: 'image/png', 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: zpl,
+    })
       .then((r) => {
         if (!r.ok) throw new Error(`Labelary 응답 ${r.status}`);
         return r.blob();
